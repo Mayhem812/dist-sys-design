@@ -1,0 +1,132 @@
+version: "3.8"
+
+services:
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: consul
+    ports:
+      - "8500:8500"
+    command: agent -dev -client=0.0.0.0
+
+  consul-init:
+    image: curlimages/curl
+    depends_on:
+      - consul
+    entrypoint: >
+      sh -c "
+      echo 'Waiting for Consul...';
+      sleep 5;
+
+      echo 'Setting Hazelcast config';
+      curl --request PUT --data '{\"members\": [\"hazelcast1:5701\",\"hazelcast2:5701\",\"hazelcast3:5701\"]}' http://consul:8500/v1/kv/hazelcast/config;
+
+      echo 'Setting Queue config';
+      curl --request PUT --data '{\"name\": \"transactions-queue\"}' http://consul:8500/v1/kv/queue/config;
+
+      echo 'Consul KV initialized';
+      "
+
+  hazelcast1:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast1
+    ports:
+      - "5701:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  hazelcast2:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast2
+    ports:
+      - "5702:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  hazelcast3:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast3
+    ports:
+      - "5703:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: counter_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  counter-service:
+    build: ./counter-service
+    container_name: counter-service
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - consul
+    environment:
+      DB_HOST: postgres
+      DB_NAME: counter_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "5002:5002"
+
+  facade-service:
+    build: ./facade-service
+    container_name: facade-service
+    depends_on:
+      - counter-service
+      - consul
+    ports:
+      - "5000:5000"
+
+  logging-service1:
+    build: ./logging-service
+    container_name: logging-service1
+    depends_on:
+      - consul
+    environment:
+      SERVICE_NAME: logging-service1
+    ports:
+      - "5001:5001"
+
+  logging-service2:
+    build: ./logging-service
+    container_name: logging-service2
+    depends_on:
+      - consul
+    environment:
+      SERVICE_NAME: logging-service2
+    ports:
+      - "5003:5001"
+
+  logging-service3:
+    build: ./logging-service
+    container_name: logging-service3
+    depends_on:
+      - consul
+    environment:
+      SERVICE_NAME: logging-service3
+    ports:
+      - "5004:5001"
+
+  management-center:
+    image: hazelcast/management-center:5.4
+    container_name: hazelcast-mc
+    ports:
+      - "8080:8080"
