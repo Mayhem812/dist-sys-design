@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  hazelcast1:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast1
+    ports:
+      - "5701:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  hazelcast2:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast2
+    ports:
+      - "5702:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  hazelcast3:
+    image: hazelcast/hazelcast:5.4
+    container_name: hazelcast3
+    ports:
+      - "5703:5701"
+    volumes:
+      - ./hazelcast/config/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml
+    environment:
+      - JAVA_OPTS=-Dhazelcast.config=/opt/hazelcast/config/hazelcast.yaml
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: counter_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  counter-service:
+    build: ./counter-service
+    container_name: counter-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_NAME: counter_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "5002:5002"
+
+  facade-service:
+    build: ./facade-service
+    container_name: facade-service
+    depends_on:
+      - counter-service
+    ports:
+      - "5000:5000"
+
+  config-server:
+    build: ./config-server
+    container_name: config-server
+    ports:
+      - "5003:5003"
+
+  logging-service1:
+    build: ./logging-service
+    container_name: logging-service1
+    environment:
+      SERVICE_NAME: logging-service1
+
+  logging-service2:
+    build: ./logging-service
+    container_name: logging-service2
+    environment:
+      SERVICE_NAME: logging-service2
+
+  logging-service3:
+    build: ./logging-service
+    container_name: logging-service3
+    environment:
+      SERVICE_NAME: logging-service3
+
+
+  management-center:
+    image: hazelcast/management-center:5.4
+    container_name: hazelcast-mc
+    ports:
+      - "8080:8080"
